@@ -1,0 +1,324 @@
+<div class="admin-layout">
+  <aside class="admin-sidebar">
+    <div class="sidebar-brand">
+      <span class="brand-mark" aria-hidden="true">
+        <span class="brand-mark" aria-hidden="true"><img src="img/logo.jpg" width="40" height="40" alt=""></span>
+      </span>
+
+      
+      <div>
+        <p class="brand-title" translate="no">Cuidado &amp; Vida</p>
+        <p class="brand-sub">Panel administrativo</p>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav" aria-label="Secciones del panel">
+      <button type="button" [attr.aria-current]="activeTab() === 'requests' ? 'page' : null" [class.active]="activeTab() === 'requests'" (click)="activeTab.set('requests')">
+        Solicitudes
+        @if (pendingRequests().length) { <span class="count">{{ pendingRequests().length }}</span> }
+      </button>
+      <button type="button" [attr.aria-current]="activeTab() === 'nurses' ? 'page' : null" [class.active]="activeTab() === 'nurses'" (click)="activeTab.set('nurses')">
+        Enfermeras
+        <span class="count muted">{{ nurses().length }}</span>
+      </button>
+      <button type="button" [attr.aria-current]="activeTab() === 'notify' ? 'page' : null" [class.active]="activeTab() === 'notify'" (click)="activeTab.set('notify')">
+        Confirmar turno
+      </button>
+      <button type="button" [attr.aria-current]="activeTab() === 'shifts' ? 'page' : null" [class.active]="activeTab() === 'shifts'" (click)="activeTab.set('shifts')">
+        Asignar turno
+      </button>
+    </nav>
+
+    <div class="sidebar-footer">
+      <a class="site-link" href="/">Ver sitio público</a>
+      <button class="btn btn-secondary btn-sm logout" type="button" (click)="logout()">Cerrar sesión</button>
+    </div>
+  </aside>
+
+  <main class="admin-content" id="contenido">
+    <header class="admin-topbar">
+      <h1>
+        @switch (activeTab()) {
+          @case ('requests') { Solicitudes de clientes }
+          @case ('nurses') { Personal de enfermería }
+          @case ('shifts') { Asignar turno }
+          @case ('notify') { Confirmar turno }
+    
+        }
+      </h1>
+      <button class="btn btn-secondary btn-sm" type="button" (click)="loadData()" [disabled]="isLoading()">
+        {{ isLoading() ? 'Actualizando…' : 'Actualizar datos' }}
+      </button>
+    </header>
+
+    <div class="admin-body">
+      @if (loadError()) {
+        <div class="alert alert-error" role="alert">{{ loadError() }}</div>
+      }
+
+      <!-- Solicitudes -->
+      @if (activeTab() === 'requests') {
+        <section class="panel" aria-labelledby="h-req">
+          <div class="panel-head">
+            <div>
+              <h2 id="h-req">Bandeja de solicitudes</h2>
+              <p>Pendientes y turnos en curso. Al finalizar un turno, la solicitud sale de la bandeja.</p>
+            </div>
+            <ul class="mini-stats">
+              <li><strong>{{ pendingRequests().length }}</strong><span>pendientes</span></li>
+              <li><strong>{{ visibleRequests().length }}</strong><span>{{ showCompleted() ? 'completadas' : 'activas' }}</span></li>
+            </ul>
+          </div>
+
+          @if (completedCount()) {
+            <div class="toolbar">
+              <label class="toggle">
+                <input type="checkbox" [checked]="showCompleted()" (change)="showCompleted.set($any($event.target).checked)">
+                Ver completadas ({{ completedCount() }})
+                
+              </label>
+              @if (showCompleted()) {
+                <button class="btn btn-danger btn-sm" type="button" (click)="deleteCompletedRequests()">Eliminar completadas</button>
+              }
+            </div>
+          }
+
+          @if (!isLoading() && !visibleRequests().length) {
+            <p class="empty">No hay solicitudes en esta vista.</p>
+          } @else {
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th scope="col">Cliente</th><th scope="col">Teléfono</th><th scope="col">Servicio</th><th scope="col">Turno</th><th scope="col">Estado</th><th scope="col"><span class="sr-only">Acciones</span></th></tr>
+                </thead>
+                <tbody>
+                  @for (req of visibleRequests(); track req.id) {
+                    <tr>
+                      <td data-label="Cliente"><strong>{{ req.client_name }}</strong></td>
+                      <td data-label="Teléfono"><a [href]="'tel:' + req.client_phone">{{ req.client_phone }}</a></td>
+                      <td data-label="Servicio">{{ req.service_type }}</td>
+                      <td data-label="Turno">
+                        @if (req.status === 'Pendiente') { <span class="muted">Sin turno · {{ req.created_at | date:'d MMM' }}</span> }
+                        @else { {{ nurseName(req.nurse_id) }}@if (req.shift_date) { · {{ formatShiftDate(req.shift_date) }} } }
+                      </td>
+                      <td data-label="Estado">
+                        <span class="badge" [class.pending]="req.status === 'Pendiente'" [class.ok]="req.status === 'Asignado'" [class.rest]="req.status === 'Completado'">{{ req.status }}</span>
+                        @if (isOverdue(req)) { <span class="badge late">Turno vencido</span> }
+                      </td>
+                      <td class="actions">
+                        @if (req.status === 'Pendiente') {
+                          <button class="btn btn-primary btn-sm" type="button" (click)="selectRequestForShift(req)">Asignar turno</button>
+                          <button class="btn btn-danger btn-sm" type="button" (click)="deleteRequest(req)">Eliminar</button>
+                        } @else if (req.status === 'Completado') {
+                          <button class="btn btn-danger btn-sm" type="button" (click)="deleteRequest(req)">Eliminar</button>
+                        } @else if (req.status === 'Asignado') {
+                          <button class="btn btn-sm" [class.btn-primary]="isOverdue(req)" [class.btn-secondary]="!isOverdue(req)" type="button" (click)="finishShift(req)">Finalizar turno</button>
+                        }
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+        </section>
+      }
+
+      <!-- Enfermeras -->
+      @if (activeTab() === 'nurses') {
+        <section class="panel" aria-labelledby="h-nur">
+          <div class="panel-head">
+            <div>
+              <h2 id="h-nur">Perfiles profesionales</h2>
+              <p>Cree, edite y controle la disponibilidad del personal.</p>
+            </div>
+            <button class="btn btn-primary btn-sm" type="button" (click)="openNewNurseModal()">Nueva enfermera</button>
+          </div>
+
+          @if (!isLoading() && !nurses().length) {
+            <p class="empty">No hay enfermeras registradas. Agregue la primera para poder asignar turnos.</p>
+          } @else {
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th scope="col">Nombre</th><th scope="col">Especialidad</th><th scope="col">Teléfono</th><th scope="col">Experiencia</th><th scope="col">Estado</th><th scope="col"><span class="sr-only">Acciones</span></th></tr>
+                </thead>
+                <tbody>
+                  @for (nurse of nurses(); track nurse.id) {
+                    <tr>
+                      <td data-label="Nombre"><strong>{{ nurse.full_name }}</strong></td>
+                      <td data-label="Especialidad">{{ nurse.specialty }}</td>
+                      <td data-label="Teléfono">{{ nurse.phone }}</td>
+                      <td data-label="Experiencia">{{ nurse.experience_years }} {{ nurse.experience_years === 1 ? 'año' : 'años' }}</td>
+                      <td data-label="Estado">
+                        <span class="badge" [class.ok]="nurse.status === 'Disponible'" [class.pending]="nurse.status === 'Asignada'" [class.rest]="nurse.status === 'Descanso'">{{ nurse.status }}</span>
+                      </td>
+                      <td class="actions">
+                        <button class="btn btn-secondary btn-sm" type="button" (click)="editNurse(nurse)">Editar</button>
+                        <button class="btn btn-danger btn-sm" type="button" (click)="deleteNurse(nurse)">Eliminar</button>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+        </section>
+      }
+
+      <!-- Notificaciones -->
+       @if (activeTab() === 'notify') {
+        <section class="panel narrow" aria-labelledby="h-shift">
+          <div class="panel-head">
+            <div>
+              <h2 id="h-shift">Confirmar turno al cliente</h2>
+              <p>Al asignar, se abre WhatsApp con el recordatorio listo para enviar al cliente.</p>
+            </div>
+          </div>
+
+          @if (shiftFeedback(); as fb) {
+            <div class="alert" [class.alert-ok]="fb.kind === 'ok'" [class.alert-error]="fb.kind === 'error'" [class.alert-info]="fb.kind === 'info'"
+                 [attr.role]="fb.kind === 'error' ? 'alert' : 'status'">{{ fb.text }}</div>
+          }
+
+          @if (waFallbackUrl(); as wa) {
+            <p><a class="btn btn-wa btn-sm" [href]="wa" target="_blank" rel="noopener">Abrir WhatsApp con el recordatorio</a></p>
+          }
+
+          <form (submit)="assignShiftAndNotifyNotification($event)" novalidate>
+            <div class="field">
+              <label for="sh-req">Solicitud del cliente</label>
+              <select id="sh-req" class="control" name="selectedRequest" [ngModel]="selectedRequest" (ngModelChange)="selectedRequest = $event; onRequestChange($event)">
+                <option [ngValue]="null">Elija una solicitud pendiente…</option>
+                @for (req of pendingRequests(); track req.id) {
+                  <option [ngValue]="req">{{ req.client_name }} · {{ req.service_type }}</option>
+                }
+              </select>
+              @if (!pendingRequests().length) { <p class="hint">No hay solicitudes pendientes.</p> }
+            </div>
+
+            <div class="field">
+              <label for="sh-phone">Número del cliente</label>
+              <input id="sh-phone" class="control" type="tel" inputmode="tel" name="clientNumber" [(ngModel)]="clientNumber"
+                     autocomplete="off" spellcheck="false" placeholder="Ej. 300 123 4567…">
+              <p class="hint">Se rellena con el número de la solicitud. Aquí se enviará el recordatorio por WhatsApp.</p>
+            </div>
+
+            
+
+            <!-- <div class="field">
+              <label for="sh-date">Fecha del servicio</label>
+              <input id="sh-date" class="control" type="date" name="shiftDate" [(ngModel)]="shiftDate" [min]="minDate">
+            </div> -->
+
+            <button class="btn btn-primary" type="submit" [disabled]="isAssigning()">
+              {{ isAssigning() ? 'Guardando…' : 'Asignar turno y avisar por WhatsApp' }}
+            </button>
+          </form>
+        </section>
+      }
+
+      <!-- Turnos -->
+      @if (activeTab() === 'shifts') {
+        <section class="panel narrow" aria-labelledby="h-shift">
+          <div class="panel-head">
+            <div>
+              <h2 id="h-shift">Confirmar turno al cliente</h2>
+              <p>Al asignar, se abre WhatsApp con el recordatorio listo para enviar al cliente.</p>
+            </div>
+          </div>
+
+          @if (shiftFeedback(); as fb) {
+            <div class="alert" [class.alert-ok]="fb.kind === 'ok'" [class.alert-error]="fb.kind === 'error'" [class.alert-info]="fb.kind === 'info'"
+                 [attr.role]="fb.kind === 'error' ? 'alert' : 'status'">{{ fb.text }}</div>
+          }
+
+          @if (waFallbackUrl(); as wa) {
+            <p><a class="btn btn-wa btn-sm" [href]="wa" target="_blank" rel="noopener">Abrir WhatsApp con el recordatorio</a></p>
+          }
+
+          <form (submit)="assignShiftAndNotify($event)" novalidate>
+            <div class="field">
+              <label for="sh-req">Solicitud del cliente</label>
+              <select id="sh-req" class="control" name="selectedRequest" [ngModel]="selectedRequest" (ngModelChange)="selectedRequest = $event; onRequestChange($event)">
+                <option [ngValue]="null">Elija una solicitud pendiente…</option>
+                @for (req of pendingRequests(); track req.id) {
+                  <option [ngValue]="req">{{ req.client_name }} · {{ req.service_type }}</option>
+                }
+              </select>
+              @if (!pendingRequests().length) { <p class="hint">No hay solicitudes pendientes.</p> }
+            </div>
+
+            <div class="field">
+              <label for="sh-phone">Número del cliente</label>
+              <input id="sh-phone" class="control" type="tel" inputmode="tel" name="clientNumber" [(ngModel)]="clientNumber"
+                     autocomplete="off" spellcheck="false" placeholder="Ej. 300 123 4567…">
+              <p class="hint">Se rellena con el número de la solicitud. Aquí se enviará el recordatorio por WhatsApp.</p>
+            </div>
+
+            <div class="field">
+              <label for="sh-nurse">Enfermera disponible</label>
+              <select id="sh-nurse" class="control" name="selectedNurseId" [(ngModel)]="selectedNurseId">
+                <option value="">Elija una profesional…</option>
+                @for (n of availableNurses(); track n.id) {
+                  <option [value]="n.id">{{ n.full_name }} · {{ n.specialty }}</option>
+                }
+              </select>
+              @if (!availableNurses().length) { <p class="hint">No hay enfermeras disponibles.</p> }
+            </div>
+
+            <!-- <div class="field">
+              <label for="sh-date">Fecha del servicio</label>
+              <input id="sh-date" class="control" type="date" name="shiftDate" [(ngModel)]="shiftDate" [min]="minDate">
+            </div> -->
+
+            <button class="btn btn-primary" type="submit" [disabled]="isAssigning()">
+              {{ isAssigning() ? 'Guardando…' : 'Asignar turno y avisar por WhatsApp' }}
+            </button>
+          </form>
+        </section>
+      }
+    </div>
+  </main>
+</div>
+
+@if (showNurseModal()) {
+  <div class="modal-backdrop">
+    <form class="modal-card" role="dialog" aria-modal="true" aria-labelledby="nurse-title" (submit)="saveNurse($event)" novalidate>
+      <h2 id="nurse-title">{{ isEditingNurse ? 'Editar enfermera' : 'Nueva enfermera' }}</h2>
+      <p class="lede">Crear nueva enfermera.</p>
+
+      @if (nurseError()) { <div class="alert alert-error" role="alert">{{ nurseError() }}</div> }
+
+      <div class="field">
+        <label for="n-name">Nombre completo</label>
+        <input id="n-name" class="control" type="text" name="full_name" [(ngModel)]="currentNurse.full_name" autocomplete="off" placeholder="Ej. María Pérez…">
+      </div>
+      <div class="field">
+        <label for="n-spec">Especialidad</label>
+        <input id="n-spec" class="control" type="text" name="specialty" [(ngModel)]="currentNurse.specialty" autocomplete="off" placeholder="Ej. Geriatría y cuidado crítico…">
+      </div>
+      <div class="field">
+        <label for="n-phone">Teléfono</label>
+        <input id="n-phone" class="control" type="tel" inputmode="tel" name="phone" [(ngModel)]="currentNurse.phone" autocomplete="off" placeholder="Ej. 300 123 4567…">
+      </div>
+      <div class="field">
+        <label for="n-exp">Años de experiencia</label>
+        <input id="n-exp" class="control" type="number" inputmode="numeric" name="experience_years" [(ngModel)]="currentNurse.experience_years" min="0" max="60">
+      </div>
+      <div class="field">
+        <label for="n-status">Estado</label>
+        <select id="n-status" class="control" name="status" [(ngModel)]="currentNurse.status">
+          <option value="Disponible">Disponible</option>
+          <option value="Asignada">Asignada</option>
+          <option value="Descanso">Descanso</option>
+        </select>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" (click)="showNurseModal.set(false)">Cancelar</button>
+        <button type="submit" class="btn btn-primary" [disabled]="isSavingNurse()">{{ isSavingNurse() ? 'Guardando…' : 'Guardar' }}</button>
+      </div>
+    </form>
+  </div>
+}

@@ -6,7 +6,12 @@
     "start": "ng serve",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
-    "test": "ng test"
+    "test": "ng test",
+    "config": "node scripts/set-env.mjs",
+    "prestart": "npm run config",
+    "prebuild": "npm run config",
+    "prewatch": "npm run config",
+    "pretest": "npm run config"
   },
   "private": true,
   "dependencies": {
@@ -17,6 +22,7 @@
     "@angular/platform-browser": "^19.2.0",
     "@angular/platform-browser-dynamic": "^19.2.0",
     "@angular/router": "^19.2.0",
+    "@supabase/supabase-js": "^2.118.0",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0",
     "zone.js": "~0.15.0"

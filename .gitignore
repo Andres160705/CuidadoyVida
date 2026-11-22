@@ -40,3 +40,12 @@ testem.log
 # System files
 .DS_Store
 Thumbs.db
+
+# Secretos y variables de entorno
+.env
+.env.*
+!.env.example
+backend/node_modules
+backend/dist
+# Generados desde .env por scripts/set-env.mjs
+/src/environments/environment*.ts
