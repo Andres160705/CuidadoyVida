@@ -27,8 +27,8 @@ interface FormErrors {
 }
 
 /** Único número de contacto del sitio: WhatsApp, llamadas y pie de página salen de aquí. */
-export const WHATSAPP_NUMBER = '573168108854';
-export const PHONE_DISPLAY = '+57 316 810 8854';
+export const WHATSAPP_NUMBER = '573182674695';
+export const PHONE_DISPLAY = '+57 318 267 4695';
 
 @Component({
   selector: 'app-landing',

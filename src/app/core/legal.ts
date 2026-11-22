@@ -8,9 +8,9 @@ export const LEGAL = {
   ownerId: '[COMPLETAR: NIT o cédula]',
   address: '[COMPLETAR: dirección física]',
   city: '[COMPLETAR: ciudad], Colombia',
-  email: 'contacto@cuidadoyvida.com',
-  phoneDisplay: '+57 316 810 8854',
-  whatsappNumber: '573168108854',
+  email: 'cuidadointegral.saluyvida@gmail.com',
+  phoneDisplay: '+57 318 267 4695',
+  whatsappNumber: '573182674695',
   /** Fecha de entrada en vigencia de la versión actual. Cambiarla cada vez que se modifique la política. */
   privacyVersion: '2026-11-19',
   termsVersion: '2026-11-19'

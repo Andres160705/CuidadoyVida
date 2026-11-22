@@ -100,7 +100,7 @@ app.post('/api/assign-shift', requireAdmin, async (req: Request<{}, {}, ShiftAss
   try {
     // 1. Enviar correo de confirmación inmediata
     await transporter.sendMail({
-      from: '"Cuidado & Vida - Notificaciones" <notificaciones@cuidadoyvida.com>',
+      from: `"Cuidado & Vida - Notificaciones" <${SMTP_USER}>`,
       to: clientEmail,
       subject: `Confirmación de Turno - ${body.serviceType.trim()}`,
       html: `
@@ -127,7 +127,7 @@ app.post('/api/assign-shift', requireAdmin, async (req: Request<{}, {}, ShiftAss
       setTimeout(async () => {
         try {
           await transporter.sendMail({
-            from: '"Cuidado & Vida - Recordatorios" <notificaciones@cuidadoyvida.com>',
+            from: `"Cuidado & Vida - Recordatorios" <${SMTP_USER}>`,
             to: clientEmail,
             subject: `Recordatorio: Su servicio médico es mañana`,
             html: `
