@@ -10,12 +10,18 @@ export const routes: Routes = [
   },
   {
     path: 'admin/login',
+    title: 'Acceso administrativo · Cuidado & Vida',
     component: LoginComponent
   },
   {
     path: 'admin',
+    title: 'Panel administrativo · Cuidado & Vida',
     canActivate: [authGuard],
     loadChildren: () => import('./features/admin/admin.routes').then(m => ADMIN_ROUTES)
   },
-  { path: '**', redirectTo: '' }
+  {
+    path: '**',
+    title: 'Página no encontrada · Cuidado & Vida',
+    loadComponent: () => import('./features/public/not-found/not-found.component').then(m => m.NotFoundComponent)
+  }
 ];

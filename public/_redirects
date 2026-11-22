@@ -1,0 +1,3 @@
+# Las páginas públicas existen como HTML prerenderizado y se sirven tal cual.
+# El resto (panel /admin y URLs desconocidas) lo atiende index.csr.html, el arranque sin prerender (Netlify y Cloudflare Pages).
+/*    /index.csr.html   200

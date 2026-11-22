@@ -1,6 +1,6 @@
 import { Component, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { SupabaseService } from '../../../core/services/supabase.service';
 
 @Component({
@@ -70,7 +70,12 @@ export class LoginComponent {
   password = '';
   errorMessage = signal<string | null>(null);
 
-  constructor(public supabase: SupabaseService, private router: Router) {}
+  constructor(public supabase: SupabaseService, private router: Router, route: ActivatedRoute) {
+    // El guard del panel redirige aquí con ?motivo=sin-permiso si el usuario no es administrador.
+    if (route.snapshot.queryParamMap.get('motivo') === 'sin-permiso') {
+      this.errorMessage.set('Su usuario no tiene permisos de administrador. Pida a quien administra el sitio que le dé acceso.');
+    }
+  }
 
   async onLogin(event: Event) {
     event.preventDefault();

@@ -20,7 +20,7 @@
 <header class="navbar">
   <div class="wrap nav-row">
     <a class="brand" href="#inicio" (click)="closeMenu()" aria-label="Cuidado y Vida, ir al inicio">
-      <span class="brand-mark" aria-hidden="true"><img src="img/logo.jpg" width="502" height="518" alt=""></span>
+      <span class="brand-mark" aria-hidden="true"><img src="img/logo-164.jpg" width="164" height="169" alt=""></span>
       <span class="brand-name" translate="no">Cuidado <em>&amp; Vida</em></span>
     </a>
 
@@ -49,7 +49,7 @@
       <div class="hero-copy" data-enter>
         <p class="eyebrow">Servicios de salud a domicilio</p>
         <h1>Enfermería y exámenes de laboratorio, en su casa.</h1>
-        <p class="hero-lede">Turnos de 8, 12 y 24 horas para el cuidado de adulto mayor, toma de examenes medicos e inyectología con profesionales. Tarifas claras&nbsp;dependiendo del serivicio requerido.</p>
+        <p class="hero-lede">Turnos de 8, 12 y 24 horas para el cuidado de adulto mayor, toma de exámenes médicos e inyectología con profesionales. Tarifas claras según el servicio que necesite.</p>
         <div class="hero-actions">
           <a class="btn btn-wa" [href]="bookWhatsapp" target="_blank" rel="noopener">
             <svg class="icon" aria-hidden="true"><use href="#i-chat"/></svg>
@@ -156,7 +156,7 @@
   <!-- ───── Cierre ───── -->
   <section class="section closing">
     <div class="wrap closing-row">
-      <h2>Cuéntenos qué necesita y lo atendemos hoy.</h2>
+      <h2>Cuéntenos qué necesita y le respondemos lo antes posible.</h2>
       <div class="closing-actions">
         <a class="btn btn-wa" [href]="bookWhatsapp" target="_blank" rel="noopener">
           <svg class="icon" aria-hidden="true"><use href="#i-chat"/></svg>
@@ -178,7 +178,7 @@
       <p class="footer-title">Contacto</p>
       <ul class="footer-list">
         <li><svg class="icon" aria-hidden="true"><use href="#i-phone"/></svg><a [href]="phoneHref">{{ phoneDisplay }}</a></li>
-        <li><svg class="icon" aria-hidden="true"><use href="#i-mail"/></svg><a href="mailto:cuidadointegral.saluyvida@gmail.com">cuidadointegral.saluyvida&#64;gmail.com</a></li>
+        <li><svg class="icon" aria-hidden="true"><use href="#i-mail"/></svg><a [href]="'mailto:' + email">{{ email }}</a></li>
       </ul>
     </div>
     <nav aria-label="Legal">
@@ -220,7 +220,7 @@
         <form (submit)="submitClientRequest($event)" novalidate >
           <div class="field">
             <label for="req-name">Nombre completo</label>
-            <input id="req-name" class="control" type="text" name="clientName" [(ngModel)]="clientName"
+            <input id="req-name" class="control" type="text" name="clientName" [(ngModel)]="clientName" maxlength="100"
                    autocomplete="name" placeholder="Ej. Roberto Gómez…"
                    [attr.aria-invalid]="errors().name ? 'true' : null" [attr.aria-describedby]="errors().name ? 'err-name' : null">
             @if (errors().name) { <p id="err-name" class="error">{{ errors().name }}</p> }
@@ -228,7 +228,7 @@
 
           <div class="field">
             <label for="req-phone">Teléfono o WhatsApp</label>
-            <input id="req-phone" class="control" type="tel" inputmode="tel" name="clientPhone" [(ngModel)]="clientPhone"
+            <input id="req-phone" class="control" type="tel" inputmode="tel" name="clientPhone" [(ngModel)]="clientPhone" maxlength="20"
                    autocomplete="tel" placeholder="Ej. 300 123 4567…"
                    [attr.aria-invalid]="errors().phone ? 'true' : null" [attr.aria-describedby]="errors().phone ? 'err-phone' : null">
             @if (errors().phone) { <p id="err-phone" class="error">{{ errors().phone }}</p> }
@@ -237,12 +237,12 @@
           <div class="field">
             <label for="req-service">Servicio que necesita</label>
             <select id="req-service" class="control" name="selectedService" [(ngModel)]="selectedService"
-                    [attr.aria-invalid]="errors().service ? 'true' : null">
+                    [attr.aria-invalid]="errors().service ? 'true' : null" [attr.aria-describedby]="errors().service ? 'err-service' : null">
               @for (srv of services; track srv.title) {
                 <option [value]="srv.title">{{ srv.title }} · {{ srv.price }}</option>
               }
             </select>
-            @if (errors().service) { <p class="error">{{ errors().service }}</p> }
+            @if (errors().service) { <p id="err-service" class="error">{{ errors().service }}</p> }
           </div>
 
           <div class="field consent">
@@ -258,6 +258,15 @@
             <p id="consent-hint" class="hint">Solo usamos sus datos para contactarle y prestar el servicio. Puede pedir que los borremos cuando quiera.</p>
             @if (errors().consent) { <p id="err-consent" class="error">{{ errors().consent }}</p> }
           </div>
+
+          @if (captcha.enabled) {
+            <div class="field">
+              <!-- Cloudflare Turnstile: verificación anti-spam. El token se valida en api/solicitud.js. -->
+              <div id="captcha-box" class="captcha-box" tabindex="-1" aria-label="Verificación de seguridad"
+                   [attr.aria-describedby]="errors().captcha ? 'err-captcha' : null"></div>
+              @if (errors().captcha) { <p id="err-captcha" class="error">{{ errors().captcha }}</p> }
+            </div>
+          }
 
           <div class="modal-actions">
             <button type="button" class="btn btn-secondary" (click)="closeRequestModal()">Cancelar</button>

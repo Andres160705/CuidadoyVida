@@ -2,22 +2,25 @@ import { inject } from '@angular/core';
 import { Router, CanActivateFn } from '@angular/router';
 import { SupabaseService } from '../services/supabase.service';
 
-export const authGuard: CanActivateFn = async (route, state) => {
+/**
+ * Deja entrar al panel solo a usuarios con sesión Y registrados como administradores (tabla admin_users).
+ * Es la primera barrera; la que protege los datos de verdad son las políticas RLS de Supabase.
+ */
+export const authGuard: CanActivateFn = async () => {
   const supabaseService = inject(SupabaseService);
   const router = inject(Router);
 
-  // Si hay usuario autenticado en memoria
-  if (supabaseService.currentUser()) {
-    return true;
+  // Sesión en memoria, o recuperada de Supabase (soporta recargas con F5).
+  const hasSession = !!supabaseService.currentUser() || !!(await supabaseService.getSession());
+  if (!hasSession) {
+    return router.createUrlTree(['/admin/login']);
   }
 
-  // Verificar sesión directamente en Supabase (soporta recargas de página F5)
-  const session = await supabaseService.getSession();
-  if (session) {
-    return true;
+  // Con sesión pero sin permisos: se cierra la sesión para no dejarla abierta y se explica el motivo.
+  if (!(await supabaseService.isAdmin())) {
+    await supabaseService.logout();
+    return router.createUrlTree(['/admin/login'], { queryParams: { motivo: 'sin-permiso' } });
   }
 
-  // Si no hay sesión, redirigir al login
-  router.navigate(['/admin/login']);
-  return false;
+  return true;
 };

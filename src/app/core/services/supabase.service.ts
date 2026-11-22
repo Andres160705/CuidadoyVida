@@ -1,4 +1,5 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable, PLATFORM_ID, inject, signal } from '@angular/core';
+import { isPlatformBrowser } from '@angular/common';
 import { createClient, SupabaseClient, User } from '@supabase/supabase-js';
 import { environment } from '../../../environments/environment';
 
@@ -29,15 +30,19 @@ export interface ClientRequest {
   providedIn: 'root'
 })
 export class SupabaseService {
-  private supabase: SupabaseClient;
-  
+  /** Solo existe en el navegador: durante el prerender (Node) no se crea, porque deja tareas de sesión abiertas
+   *  y la página nunca termina de generarse. Ningún método se llama en el servidor (son acciones del usuario o del panel). */
+  private supabase!: SupabaseClient;
+
   public currentUser = signal<User | null>(null);
   public isLoading = signal<boolean>(false);
 
   constructor() {
+    if (!isPlatformBrowser(inject(PLATFORM_ID))) return;
+
     // Valores públicos (ver src/environments). La seguridad de los datos depende de las políticas RLS en Supabase.
     this.supabase = createClient(environment.supabaseUrl, environment.supabasePublishableKey);
-    
+
     this.supabase.auth.getSession().then(({ data }) => {
       this.currentUser.set(data.session?.user ?? null);
     });
@@ -122,10 +127,11 @@ export class SupabaseService {
     if (error) throw error;
   }
 
-  /** Borra definitivamente una solicitud pendiente o completada (también se usa para atender pedidos de supresión de datos). */
+  /** Borra definitivamente una solicitud (también se usa para atender pedidos de supresión de datos). Falla si no borró nada. */
   async deleteClientRequest(id: string): Promise<void> {
-    const { error } = await this.supabase.from('client_requests').delete().eq('id', id).in('status', ['Pendiente', 'Completado']);
+    const { data, error } = await this.supabase.from('client_requests').delete().eq('id', id).select('id');
     if (error) throw error;
+    if (!data?.length) throw new Error('La solicitud no se borró: puede que ya no exista o que su usuario no tenga permiso.');
   }
 
   /** Borra definitivamente todas las solicitudes completadas. */
@@ -138,6 +144,13 @@ export class SupabaseService {
   async assignRequest(id: string, nurseId: string, shiftDate?: string | null): Promise<void> {
     const { error } = await this.supabase.from('client_requests')
       .update({ status: 'Asignado', nurse_id: nurseId, shift_date: shiftDate || null }).eq('id', id);
+    if (error) throw error;
+  }
+
+  /** Deshace una asignación: la solicitud vuelve a Pendiente sin enfermera ni fecha. */
+  async unassignRequest(id: string): Promise<void> {
+    const { error } = await this.supabase.from('client_requests')
+      .update({ status: 'Pendiente', nurse_id: null, shift_date: null }).eq('id', id);
     if (error) throw error;
   }
 

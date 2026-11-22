@@ -4,6 +4,7 @@ import { LandingComponent } from './landing/landing.component';
 export const PUBLIC_ROUTES: Routes = [
   {
     path: '',
+    title: 'Cuidado & Vida · Enfermería y exámenes a domicilio',
     component: LandingComponent
   },
   {

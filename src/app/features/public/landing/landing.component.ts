@@ -1,7 +1,8 @@
-import { Component, ElementRef, HostListener, ViewChild, signal } from '@angular/core';
+import { Component, ElementRef, HostListener, Injector, ViewChild, afterNextRender, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { SupabaseService } from '../../../core/services/supabase.service';
+import { CaptchaService } from '../../../core/services/captcha.service';
 import { LEGAL } from '../../../core/legal';
 
 type ServiceCategory = 'Exámenes a domicilio' | 'Cuidado del adulto mayor' | 'Enfermería especializada';
@@ -24,11 +25,16 @@ interface FormErrors {
   phone?: string;
   service?: string;
   consent?: string;
+  captcha?: string;
 }
 
-/** Único número de contacto del sitio: WhatsApp, llamadas y pie de página salen de aquí. */
-export const WHATSAPP_NUMBER = '573182674695';
-export const PHONE_DISPLAY = '+57 318 267 4695';
+/** El número de contacto vive solo en core/legal.ts: WhatsApp, llamadas, pie de página y páginas legales salen de ahí. */
+const WHATSAPP_NUMBER = LEGAL.whatsappNumber;
+const PHONE_DISPLAY = LEGAL.phoneDisplay;
+
+/** Mismos límites que las restricciones de la tabla en Supabase (supabase/seguridad-formulario.sql). */
+const MAX_NAME = 100;
+const MAX_PHONE = 20;
 
 @Component({
   selector: 'app-landing',
@@ -52,6 +58,7 @@ export class LandingComponent {
   /** Casilla de autorización: siempre empieza sin marcar (Ley 1581 de 2012, autorización previa y expresa). */
   acceptPrivacy = false;
   readonly brand = LEGAL.brand;
+  readonly email = LEGAL.email;
   errors = signal<FormErrors>({});
   submitError = signal<string | null>(null);
   submitOk = signal(false);
@@ -62,7 +69,7 @@ export class LandingComponent {
 
   readonly steps = [
     { n: '1', title: 'Cuéntenos qué necesita', text: 'Escríbanos por WhatsApp o deje sus datos en el formulario. Sin trámites ni esperas.' },
-    { n: '2', title: 'Le confirmamos el servicio', text: 'Asignamos al profesional adecuado y se confirmaria por WhatsApp la fecha de la visita.' },
+    { n: '2', title: 'Le confirmamos el servicio', text: 'Asignamos al profesional adecuado y le confirmamos por WhatsApp la fecha de la visita.' },
     { n: '3', title: 'Lo atendemos en casa', text: 'El profesional llega con equipos adecuados y, en los turnos, deja un reporte diario a la familia.' }
   ];
 
@@ -116,7 +123,12 @@ export class LandingComponent {
     }
   ];
 
-  constructor(private supabase: SupabaseService) {
+  // Captcha (Cloudflare Turnstile)
+  private captchaToken: string | null = null;
+  private captchaWidgetId: string | null = null;
+  private injector = inject(Injector);
+
+  constructor(private supabase: SupabaseService, readonly captcha: CaptchaService) {
     this.selectedService = this.services[0].title;
   }
 
@@ -142,12 +154,52 @@ export class LandingComponent {
     this.submitOk.set(false);
     this.closeMenu();
     this.showRequestModal.set(true);
-    setTimeout(() => this.dialog?.nativeElement.querySelector<HTMLElement>('#req-name')?.focus());
+    // afterNextRender y no setTimeout: con eventCoalescing el modal se pinta en el siguiente frame,
+    // y un setTimeout(0) puede correr antes de que exista (el foco y el captcha fallaban).
+    afterNextRender(() => {
+      this.dialog?.nativeElement.querySelector<HTMLElement>('#req-name')?.focus();
+      this.renderCaptcha();
+    }, { injector: this.injector });
   }
 
   closeRequestModal() {
+    this.removeCaptcha();
     this.showRequestModal.set(false);
     this.lastFocus?.focus?.();
+  }
+
+  private async renderCaptcha() {
+    if (!this.captcha.enabled) return;
+    const box = this.dialog?.nativeElement.querySelector<HTMLElement>('#captcha-box');
+    if (!box) return;
+    this.captchaToken = null;
+    try {
+      this.captchaWidgetId = await this.captcha.render(box, token => {
+        this.captchaToken = token;
+        if (token) this.errors.update(e => ({ ...e, captcha: undefined }));
+      });
+    } catch {
+      this.errors.update(e => ({ ...e, captcha: 'No se pudo cargar la verificación de seguridad. Recargue la página o escríbanos por WhatsApp.' }));
+    }
+  }
+
+  private removeCaptcha() {
+    if (this.captchaWidgetId) this.captcha.remove(this.captchaWidgetId);
+    this.captchaWidgetId = null;
+    this.captchaToken = null;
+  }
+
+  /** Con captcha, la solicitud pasa por la función de Vercel (api/solicitud.js), que verifica el token y guarda. */
+  private async sendViaApi(body: Record<string, unknown>): Promise<void> {
+    const res = await fetch('/api/solicitud', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(typeof data?.error === 'string' ? data.error : 'No pudimos registrar su solicitud.');
+    }
   }
 
 
@@ -172,11 +224,16 @@ export class LandingComponent {
 
   private validate(): FormErrors {
     const errors: FormErrors = {};
-    if (this.clientName.trim().length < 3) errors.name = 'Escriba su nombre completo.';
+    const name = this.clientName.trim();
+    if (name.length < 3) errors.name = 'Escriba su nombre completo.';
+    else if (name.length > MAX_NAME) errors.name = `El nombre no puede tener más de ${MAX_NAME} caracteres.`;
+    // 10 dígitos (celular o fijo colombiano), o 12 si incluye el indicativo 57.
     const digits = this.clientPhone.replace(/\D/g, '');
-    if (digits.length < 10) errors.phone = 'Escriba un número de 10 dígitos para poder llamarle.';
+    const validPhone = digits.length === 10 || (digits.length === 12 && digits.startsWith('57'));
+    if (!validPhone || this.clientPhone.trim().length > MAX_PHONE) errors.phone = 'Escriba un número de 10 dígitos para poder llamarle (ej. 300 123 4567).';
     if (!this.selectedService) errors.service = 'Elija el servicio que necesita.';
     if (!this.acceptPrivacy) errors.consent = 'Para enviar la solicitud debe autorizar el tratamiento de sus datos.';
+    if (this.captcha.enabled && !this.captchaToken) errors.captcha = 'Espere a que termine la verificación de seguridad o márquela.';
     return errors;
   }
 
@@ -187,27 +244,43 @@ export class LandingComponent {
     const errors = this.validate();
     this.errors.set(errors);
     this.submitError.set(null);
-    const firstInvalid = (['name', 'phone', 'service', 'consent'] as const).find(k => errors[k]);
+    const firstInvalid = (['name', 'phone', 'service', 'consent', 'captcha'] as const).find(k => errors[k]);
     if (firstInvalid) {
-      const id = { name: 'req-name', phone: 'req-phone', service: 'req-service', consent: 'req-consent' }[firstInvalid];
+      const id = { name: 'req-name', phone: 'req-phone', service: 'req-service', consent: 'req-consent', captcha: 'captcha-box' }[firstInvalid];
       this.dialog?.nativeElement.querySelector<HTMLElement>('#' + id)?.focus();
       return;
     }
 
     this.isSubmitting.set(true);
     try {
-      await this.supabase.createClientRequest({
-        client_name: this.clientName.trim(),
-        client_phone: this.clientPhone.trim(),
-        service_type: this.selectedService,
-        status: 'Pendiente',
-        // Prueba de la autorización (Decreto 1074 de 2015, art. 2.2.2.25.2.5). Requiere backend/supabase-consentimiento.sql.
-        privacy_accepted_at: new Date().toISOString(),
-        privacy_policy_version: LEGAL.privacyVersion
-      });
+      if (this.captcha.enabled) {
+        await this.sendViaApi({
+          client_name: this.clientName.trim(),
+          client_phone: this.clientPhone.trim(),
+          service_type: this.selectedService,
+          privacy_accepted: true,
+          privacy_policy_version: LEGAL.privacyVersion,
+          captchaToken: this.captchaToken
+        });
+        this.removeCaptcha();
+      } else {
+        // Sin captcha configurado (desarrollo local): inserción directa en Supabase.
+        await this.supabase.createClientRequest({
+          client_name: this.clientName.trim(),
+          client_phone: this.clientPhone.trim(),
+          service_type: this.selectedService,
+          status: 'Pendiente',
+          // Prueba de la autorización (Decreto 1074 de 2015). La fecha definitiva la pone el servidor (supabase/seguridad-formulario.sql).
+          privacy_accepted_at: new Date().toISOString(),
+          privacy_policy_version: LEGAL.privacyVersion
+        });
+      }
       this.submitOk.set(true);
-    } catch {
-      this.submitError.set('No pudimos registrar su solicitud. Inténtelo de nuevo o escríbanos por WhatsApp.');
+    } catch (err) {
+      const detail = err instanceof Error && this.captcha.enabled ? err.message + ' ' : 'No pudimos registrar su solicitud. ';
+      this.submitError.set(detail + 'Inténtelo de nuevo o escríbanos por WhatsApp.');
+      // El token ya se gastó: se pide uno nuevo para el siguiente intento.
+      if (this.captchaWidgetId) { this.captchaToken = null; this.captcha.reset(this.captchaWidgetId); }
     } finally {
       this.isSubmitting.set(false);
     }

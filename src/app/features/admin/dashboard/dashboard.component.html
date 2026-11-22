@@ -1,11 +1,7 @@
 <div class="admin-layout">
   <aside class="admin-sidebar">
     <div class="sidebar-brand">
-      <span class="brand-mark" aria-hidden="true">
-        <span class="brand-mark" aria-hidden="true"><img src="img/logo.jpg" width="40" height="40" alt=""></span>
-      </span>
-
-      
+      <span class="brand-mark" aria-hidden="true"><img src="img/logo-164.jpg" width="164" height="169" alt=""></span>
       <div>
         <p class="brand-title" translate="no">Cuidado &amp; Vida</p>
         <p class="brand-sub">Panel administrativo</p>
@@ -83,7 +79,9 @@
             </div>
           }
 
-          @if (!isLoading() && !visibleRequests().length) {
+          @if (isLoading() && !visibleRequests().length) {
+            <p class="empty" role="status">Cargando solicitudes…</p>
+          } @else if (!visibleRequests().length) {
             <p class="empty">No hay solicitudes en esta vista.</p>
           } @else {
             <div class="table-wrap">
@@ -98,7 +96,7 @@
                       <td data-label="Teléfono"><a [href]="'tel:' + req.client_phone">{{ req.client_phone }}</a></td>
                       <td data-label="Servicio">{{ req.service_type }}</td>
                       <td data-label="Turno">
-                        @if (req.status === 'Pendiente') { <span class="muted">Sin turno · {{ req.created_at | date:'d MMM' }}</span> }
+                        @if (req.status === 'Pendiente') { <span class="muted">Sin turno · {{ formatCreatedAt(req.created_at) }}</span> }
                         @else { {{ nurseName(req.nurse_id) }}@if (req.shift_date) { · {{ formatShiftDate(req.shift_date) }} } }
                       </td>
                       <td data-label="Estado">
@@ -113,6 +111,7 @@
                           <button class="btn btn-danger btn-sm" type="button" (click)="deleteRequest(req)">Eliminar</button>
                         } @else if (req.status === 'Asignado') {
                           <button class="btn btn-sm" [class.btn-primary]="isOverdue(req)" [class.btn-secondary]="!isOverdue(req)" type="button" (click)="finishShift(req)">Finalizar turno</button>
+                          <button class="btn btn-danger btn-sm" type="button" (click)="deleteRequest(req)">Eliminar</button>
                         }
                       </td>
                     </tr>
@@ -171,8 +170,8 @@
         <section class="panel narrow" aria-labelledby="h-shift">
           <div class="panel-head">
             <div>
-              <h2 id="h-shift">Confirmar turno al cliente</h2>
-              <p>Al asignar, se abre WhatsApp con el recordatorio listo para enviar al cliente.</p>
+              <h2 id="h-shift">Acordar la fecha con el cliente</h2>
+              <p>Se abre WhatsApp con un mensaje para acordar la fecha del servicio. No se guarda nada: la solicitud sigue pendiente hasta que asigne la profesional en «Asignar turno».</p>
             </div>
           </div>
 
@@ -182,10 +181,10 @@
           }
 
           @if (waFallbackUrl(); as wa) {
-            <p><a class="btn btn-wa btn-sm" [href]="wa" target="_blank" rel="noopener">Abrir WhatsApp con el recordatorio</a></p>
+            <p><a class="btn btn-wa btn-sm" [href]="wa" target="_blank" rel="noopener">Abrir WhatsApp con el mensaje</a></p>
           }
 
-          <form (submit)="assignShiftAndNotifyNotification($event)" novalidate>
+          <form (submit)="sendConfirmationMessage($event)" novalidate>
             <div class="field">
               <label for="sh-req">Solicitud del cliente</label>
               <select id="sh-req" class="control" name="selectedRequest" [ngModel]="selectedRequest" (ngModelChange)="selectedRequest = $event; onRequestChange($event)">
@@ -211,9 +210,7 @@
               <input id="sh-date" class="control" type="date" name="shiftDate" [(ngModel)]="shiftDate" [min]="minDate">
             </div> -->
 
-            <button class="btn btn-primary" type="submit" [disabled]="isAssigning()">
-              {{ isAssigning() ? 'Guardando…' : 'Asignar turno y avisar por WhatsApp' }}
-            </button>
+            <button class="btn btn-primary" type="submit">Enviar mensaje por WhatsApp</button>
           </form>
         </section>
       }
@@ -223,8 +220,8 @@
         <section class="panel narrow" aria-labelledby="h-shift">
           <div class="panel-head">
             <div>
-              <h2 id="h-shift">Confirmar turno al cliente</h2>
-              <p>Al asignar, se abre WhatsApp con el recordatorio listo para enviar al cliente.</p>
+              <h2 id="h-shift">Asignar turno</h2>
+              <p>Elija la profesional: el turno se guarda y se abre WhatsApp con el aviso listo para enviar al cliente.</p>
             </div>
           </div>
 
@@ -284,9 +281,9 @@
 
 @if (showNurseModal()) {
   <div class="modal-backdrop">
-    <form class="modal-card" role="dialog" aria-modal="true" aria-labelledby="nurse-title" (submit)="saveNurse($event)" novalidate>
+    <form #nurseDialog class="modal-card" role="dialog" aria-modal="true" aria-labelledby="nurse-title" (submit)="saveNurse($event)" novalidate>
       <h2 id="nurse-title">{{ isEditingNurse ? 'Editar enfermera' : 'Nueva enfermera' }}</h2>
-      <p class="lede">Crear nueva enfermera.</p>
+      <p class="lede">{{ isEditingNurse ? 'Actualice los datos o el estado de la profesional.' : 'Registre una nueva profesional del equipo.' }}</p>
 
       @if (nurseError()) { <div class="alert alert-error" role="alert">{{ nurseError() }}</div> }
 
@@ -316,7 +313,7 @@
       </div>
 
       <div class="modal-actions">
-        <button type="button" class="btn btn-secondary" (click)="showNurseModal.set(false)">Cancelar</button>
+        <button type="button" class="btn btn-secondary" (click)="closeNurseModal()">Cancelar</button>
         <button type="submit" class="btn btn-primary" [disabled]="isSavingNurse()">{{ isSavingNurse() ? 'Guardando…' : 'Guardar' }}</button>
       </div>
     </form>

@@ -33,6 +33,8 @@ export const environment = ${JSON.stringify({
   production,
   supabaseUrl: env.SUPABASE_URL,
   supabasePublishableKey: key,
+  // Clave PÚBLICA del captcha (Cloudflare Turnstile). Vacía = formulario sin captcha (desarrollo local).
+  turnstileSiteKey: env.TURNSTILE_SITE_KEY || '',
   apiUrl
 }, null, 2)};
 `;

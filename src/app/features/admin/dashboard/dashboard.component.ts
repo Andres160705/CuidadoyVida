@@ -1,5 +1,4 @@
-import { Component, OnInit, signal, computed } from '@angular/core';
-import { DatePipe } from '@angular/common';
+import { Component, ElementRef, HostListener, Injector, OnInit, ViewChild, afterNextRender, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { SupabaseService, Nurse, ClientRequest } from '../../../core/services/supabase.service';
@@ -10,7 +9,7 @@ type Tab = 'requests' | 'nurses' | 'shifts' | 'notify';
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [FormsModule, DatePipe],
+  imports: [FormsModule],
   templateUrl: './dashboard.component.html',
   styleUrls: ['./dashboard.component.css']
 })
@@ -94,18 +93,48 @@ export class DashboardComponent implements OnInit {
   }
 
   // ── Enfermeras ───────────────────────────────────────────
+  @ViewChild('nurseDialog') nurseDialog?: ElementRef<HTMLElement>;
+  private lastFocus: HTMLElement | null = null;
+  private injector = inject(Injector);
+
   openNewNurseModal() {
     this.currentNurse = this.emptyNurse();
     this.isEditingNurse = false;
-    this.nurseError.set(null);
-    this.showNurseModal.set(true);
+    this.openNurseModal();
   }
 
   editNurse(nurse: Nurse) {
     this.currentNurse = { ...nurse };
     this.isEditingNurse = true;
+    this.openNurseModal();
+  }
+
+  private openNurseModal() {
+    this.lastFocus = document.activeElement as HTMLElement | null;
     this.nurseError.set(null);
     this.showNurseModal.set(true);
+    afterNextRender(() => this.nurseDialog?.nativeElement.querySelector<HTMLElement>('#n-name')?.focus(), { injector: this.injector });
+  }
+
+  closeNurseModal() {
+    this.showNurseModal.set(false);
+    this.lastFocus?.focus?.();
+  }
+
+  /** Modal de enfermeras: Esc cierra y Tab no se sale del formulario. */
+  @HostListener('document:keydown', ['$event'])
+  onKeydown(e: KeyboardEvent) {
+    if (!this.showNurseModal()) return;
+    if (e.key === 'Escape') { this.closeNurseModal(); return; }
+    if (e.key !== 'Tab' || !this.nurseDialog) return;
+    const focusables = Array.from(this.nurseDialog.nativeElement.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    ));
+    if (!focusables.length) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
   }
 
   async saveNurse(event: Event) {
@@ -128,7 +157,7 @@ export class DashboardComponent implements OnInit {
       } else {
         await this.supabase.createNurse(n);
       }
-      this.showNurseModal.set(false);
+      this.closeNurseModal();
       await this.loadData();
     } catch (err: any) {
       this.nurseError.set('No se pudo guardar el perfil. ' + (err?.message ?? ''));
@@ -181,71 +210,43 @@ export class DashboardComponent implements OnInit {
       .format(new Date(y, m - 1, d));
   }
 
-//Recordatorio WhatsApp
-async assignShiftAndNotifyNotification(event: Event) {
-     event.preventDefault();
-    if (this.isAssigning()) return;
-
+  /**
+   * Pestaña «Confirmar turno»: solo abre WhatsApp con un mensaje para acordar la fecha con el cliente.
+   * No guarda nada: la solicitud sigue Pendiente hasta que se asigne la profesional en «Asignar turno».
+   */
+  sendConfirmationMessage(event: Event) {
+    event.preventDefault();
     const request = this.selectedRequest;
-   // const nurse = this.nurses().find(n => n.id === this.selectedNurseId);
     const waNumber = this.toWhatsappNumber(this.clientNumber);
 
-    if (!request?.id)  {
-      this.shiftFeedback.set({ kind: 'error', text: 'Elija una solicitud' });
+    if (!request?.id) {
+      this.shiftFeedback.set({ kind: 'error', text: 'Elija una solicitud.' });
       return;
     }
     if (!waNumber) {
       this.shiftFeedback.set({ kind: 'error', text: 'El número del cliente debe tener 10 dígitos (ej. 300 123 4567).' });
       return;
     }
-    // Comparación de fechas como texto (YYYY-MM-DD): evita el desfase de zona horaria de new Date('YYYY-MM-DD').
-    // if (this.shiftDate < this.minDate) {
-    //   this.shiftFeedback.set({ kind: 'error', text: 'La fecha ya pasó. Elija hoy o una fecha futura.' });
-    //   return;
-    // }
-
-    const shiftDate = this.shiftDate;
-    // Se abre la pestaña ahora, dentro del clic, para que el navegador no bloquee el popup tras las esperas.
-    const waWindow = window.open('', '_blank');
-    this.isAssigning.set(true);
-    this.shiftFeedback.set({ kind: 'info', text: 'Guardando el turno…' });
-
-    try {
-     /*  await this.supabase.assignRequest(request.id, nurse.id!, shiftDate);
-      await this.supabase.updateNurse(nurse.id!, { status: 'Asignada' }); */
-    } catch (err: any) {
-      waWindow?.close();
-      this.shiftFeedback.set({ kind: 'error', text: 'No se pudo guardar el turno en Supabase. ' + (err?.message ?? '') });
-      this.isAssigning.set(false);
-      return;
-    }
 
     const message = [
-      `Hola ${request.client_name}, le confirmamos su servicio con Cuidado & Vida.`,
+      `Hola ${request.client_name}, recibimos su solicitud en Cuidado & Vida.`,
       '',
       `Servicio: ${request.service_type}`,
-      //`Profesional: ${nurse.full_name}`,
-      // `Fecha: ${this.formatDate(this.shiftDate)}`,
       '',
-      'Este es su recordatorio. Quedamos al pendiente para asignar la fecha, si necesita mas informacion responda a este mensaje.'
+      'Le escribimos para acordar la fecha y hora del servicio. ¿Qué día le queda mejor? Si necesita más información, responda a este mensaje.'
     ].join('\n');
     const url = `https://wa.me/${waNumber}?text=${encodeURIComponent(message)}`;
 
-    if (waWindow) waWindow.location.href = url;
+    const waWindow = window.open(url, '_blank');
     this.waFallbackUrl.set(waWindow ? null : url);
-
-    this.requests.update(rs => rs.map(r => r.id === request.id ? { ...r, status: 'Pendiente', } : r));
     this.shiftFeedback.set({
       kind: 'ok',
       text: waWindow
-        ? 'Turno asignado. Se abrió WhatsApp con el recordatorio listo para enviar al cliente.'
-        : 'Turno asignado. Su navegador bloqueó la ventana: use el botón de abajo para abrir WhatsApp.'
+        ? 'Se abrió WhatsApp con el mensaje para acordar la fecha. La solicitud sigue pendiente hasta que asigne la profesional.'
+        : 'Su navegador bloqueó la ventana: use el botón de abajo para abrir WhatsApp.'
     });
     this.selectedRequest = null;
-    this.selectedNurseId = '';
-    this.shiftDate = '';
     this.clientNumber = '';
-    this.isAssigning.set(false);
   }
 
 //Asignación de turno y recordatorio por WhatsApp
@@ -282,10 +283,16 @@ async assignShiftAndNotifyNotification(event: Event) {
     this.isAssigning.set(true);
     this.shiftFeedback.set({ kind: 'info', text: 'Guardando el turno…' });
 
+    let requestSaved = false;
     try {
       await this.supabase.assignRequest(request.id, nurse.id!, shiftDate);
+      requestSaved = true;
       await this.supabase.updateNurse(nurse.id!, { status: 'Asignada' });
     } catch (err: any) {
+      // Si la solicitud ya quedó asignada pero falló la enfermera, se deshace para no dejar datos a medias.
+      if (requestSaved) {
+        await this.supabase.unassignRequest(request.id).catch(() => this.loadData());
+      }
       waWindow?.close();
       this.shiftFeedback.set({ kind: 'error', text: 'No se pudo guardar el turno en Supabase. ' + (err?.message ?? '') });
       this.isAssigning.set(false);
@@ -299,7 +306,7 @@ async assignShiftAndNotifyNotification(event: Event) {
       `Profesional: ${nurse.full_name}`,
       // `Fecha: ${this.formatDate(this.shiftDate)}`,
       '',
-      'Este es su recordatorio. Quedamos al pendiente para asignar la fecha, si necesita mas informacionresponda a este mensaje.'
+      'Este es su recordatorio. Quedamos al pendiente para asignar la fecha, si necesita más información, responda a este mensaje.'
     ].join('\n');
     const url = `https://wa.me/${waNumber}?text=${encodeURIComponent(message)}`;
 
@@ -332,6 +339,12 @@ async assignShiftAndNotifyNotification(event: Event) {
     return req.status === 'Asignado' && !!req.shift_date && req.shift_date < this.minDate;
   }
 
+  /** Fecha de creación (timestamp) como «22 nov», en español y hora local. */
+  formatCreatedAt(iso?: string | null): string {
+    if (!iso) return '';
+    return new Intl.DateTimeFormat('es-CO', { day: 'numeric', month: 'short' }).format(new Date(iso));
+  }
+
   formatShiftDate(iso?: string | null): string {
     if (!iso) return '';
     const [y, m, d] = iso.split('-').map(Number);
@@ -350,13 +363,23 @@ async assignShiftAndNotifyNotification(event: Event) {
     }
   }
 
+  /** También atiende pedidos de supresión de datos (Ley 1581): se puede borrar en cualquier estado. */
   async deleteRequest(req: ClientRequest) {
-    if (!req.id || req.status === 'Asignado' || !confirm(`¿Eliminar la solicitud de ${req.client_name}? Esta acción no se puede deshacer.`)) return;
+    if (!req.id) return;
+    const warning = req.status === 'Asignado'
+      ? `La solicitud de ${req.client_name} tiene un turno asignado. Si la elimina, el turno se cancela y la profesional queda disponible. ¿Continuar? Esta acción no se puede deshacer.`
+      : `¿Eliminar la solicitud de ${req.client_name}? Esta acción no se puede deshacer.`;
+    if (!confirm(warning)) return;
     try {
       await this.supabase.deleteClientRequest(req.id);
       this.requests.update(rs => rs.filter(r => r.id !== req.id));
+      if (req.status === 'Asignado' && req.nurse_id) {
+        await this.supabase.updateNurse(req.nurse_id, { status: 'Disponible' });
+        this.nurses.update(ns => ns.map(n => n.id === req.nurse_id ? { ...n, status: 'Disponible' } : n));
+      }
     } catch (err: any) {
       this.loadError.set('No se pudo eliminar la solicitud. ' + (err?.message ?? ''));
+      await this.loadData();
     }
   }
 
